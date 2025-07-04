@@ -1,6 +1,6 @@
 {
 	"name": "calculite",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "Standard calculator with a simple button layout.",
 	"main": "main.js",
 	"scripts": {
