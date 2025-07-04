@@ -10,16 +10,16 @@ Supports any version of Obsidian all the way back to [`0.13.30`](https://obsidia
 
 ## How to use
 
-Calculite works like most other desktop calculators. There's no calculation history, but clipboard operations are supported, and the plugin will remember your current equation even if you close and relaunch Obsidian, as long as you don't close the calculator tab.
+Calculite works like most other desktop calculators. There's no back & forward history, but copy & paste is supported, and the plugin will remember your current equation even if you close and relaunch Obsidian, as long as you don't close the calculator tab.
 
-There are three different ways to open the calculator:
+There are four different ways to open the calculator:
 
 1. The ribbon icon
-2. The **Show calculator** command
-3. The **Toggle between sidebars** command
-4. The **Toggle floating calculator** command
+2. The `Show calculator` command
+3. The `Toggle between sidebars` command
+4. The `Toggle floating calculator` command
 
-Commands are accessible from the [command palette](https://help.obsidian.md/plugins/command-palette). **Show calculator** creates a calculator tab, or reveals an existing one, and the **Toggle** commands switch the calculator between different positions.
+You can use commands by opening the [command palette](https://help.obsidian.md/plugins/command-palette). `Show calculator` opens a calculator tab (or finds an existing tab) and the `Toggle` commands switch the calculator between different positions.
 
 ## Hotkeys
 
