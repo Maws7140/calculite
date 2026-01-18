@@ -17,11 +17,23 @@ export default class CalculitePlugin extends Plugin {
 		// RIBBON: Show calculator
 		this.addRibbonIcon('calculator', 'Show calculator', () => this.showCalculator());
 
+		// RIBBON: Toggle floating calculator
+		if (Platform.isDesktopApp) {
+			this.addRibbonIcon('maximize', 'Toggle floating calculator', () => this.toggleFloatingCalculator());
+		}
+
 		// COMMAND: Show calculator
 		this.addCommand({
 			id: 'show-calculator',
 			name: 'Show calculator',
 			callback: () => this.showCalculator(),
+		});
+
+		// COMMAND: Toggle scientific mode
+		this.addCommand({
+			id: 'toggle-scientific-mode',
+			name: 'Toggle scientific mode',
+			callback: () => this.toggleScientificMode(),
 		});
 
 		// COMMAND: Toggle between sidebars
@@ -56,6 +68,24 @@ export default class CalculitePlugin extends Plugin {
 
 		if (leaf) {
 			// Bring calculator to foreground
+			this.app.workspace.revealLeaf(leaf);
+		}
+	}
+
+	/**
+	 * Toggle between standard and scientific mode for the active calculator.
+	 */
+	private toggleScientificMode(): void {
+		// Check for an existing calculator
+		let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE).first() ?? null;
+
+		if (!leaf) {
+			this.showCalculator();
+			leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE).first() ?? null;
+		}
+
+		if (leaf && leaf.view instanceof CalculiteView) {
+			leaf.view.toggleScientificMode();
 			this.app.workspace.revealLeaf(leaf);
 		}
 	}
@@ -118,13 +148,13 @@ export default class CalculitePlugin extends Plugin {
 		const { documentElement } = popoutWindow.document;
 
 		// Resize window into a golden rectangle
-		const width = 247;
-		const height = 400;
+		const width = 350;
+		const height = 450;
 		popoutWindow.resizeTo(width, height);
 
 		// Move window to a comfortable position
 		popoutWindow.moveTo(
-			(window.innerWidth / 1.5) - (width / 2), (window.innerHeight / 2) - (height / 2)
+			(window.innerWidth / 2) - (width / 2), (window.innerHeight / 2) - (height / 2)
 		);
 
 		// Set floating window flags

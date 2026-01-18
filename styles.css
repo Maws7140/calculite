@@ -17,6 +17,10 @@
 	height: 100%;
 }
 
+.calculite.calculite-scientific {
+	grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
 .calculite > .calculite-subscreen {
 	grid-column: span 4;
 
@@ -32,6 +36,10 @@
 	user-select: text;
 }
 
+.calculite.calculite-scientific > .calculite-subscreen {
+	grid-column: span 6;
+}
+
 .calculite > .calculite-screen {
 	grid-column: span 4;
 
@@ -45,6 +53,10 @@
 	line-height: normal;
 	white-space: nowrap;
 	user-select: text;
+}
+
+.calculite.calculite-scientific > .calculite-screen {
+	grid-column: span 6;
 }
 
 .calculite > .calculite-invisible {
@@ -107,6 +119,16 @@
 	font-size: 2em;
 }
 
+.calculite > button.calculite-function {
+	background-color: var(--background-secondary);
+	font-size: 1.25em;
+	display: none;
+}
+
+.calculite.calculite-scientific > button.calculite-function {
+	display: flex;
+}
+
 body:not(.is-mobile) .calculite > button.calculite-delete:hover {
 	background-color: var(--background-primary-alt);
 }
@@ -117,6 +139,10 @@ body:not(.is-mobile) .calculite > button.calculite-numeric:hover {
 
 body:not(.is-mobile) .calculite > button.calculite-operator:hover {
 	background-color: var(--interactive-accent-hover);
+}
+
+body:not(.is-mobile) .calculite > button.calculite-function:hover {
+	background-color: var(--background-secondary-alt);
 }
 
 .calculite > button.calculite-delete:hover:active,
@@ -132,6 +158,11 @@ body:not(.is-mobile) .calculite > button.calculite-operator:hover {
 .calculite > button.calculite-operator:hover:active,
 .calculite > button.calculite-operator.calculite-hotkey-pressed {
 	background-color: color-mix(in srgb, var(--interactive-accent), black 15%);
+}
+
+.calculite > button.calculite-function:hover:active,
+.calculite > button.calculite-function.calculite-hotkey-pressed {
+	background-color: color-mix(in srgb, var(--background-secondary), black 15%);
 }
 
 .calculite-floating .workspace-tab-header-container-inner,

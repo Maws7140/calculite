@@ -1,4 +1,4 @@
-import { IconName, ItemView, Menu, Platform, Scope, ViewStateResult, WorkspaceLeaf } from 'obsidian';
+import { IconName, ItemView, Menu, Platform, Scope, ViewStateResult, WorkspaceLeaf, setIcon } from 'obsidian';
 
 export const VIEW_TYPE = 'calculite';
 const DISPLAY_TEXT = 'Calculite';
@@ -32,6 +32,17 @@ const SUBTRACT = '−';
 const MULTIPLY = '×';
 const DIVIDE = '÷';
 const EQUALS = '=';
+const SIN = 'sin';
+const COS = 'cos';
+const TAN = 'tan';
+const LOG = 'log';
+const LN = 'ln';
+const SQRT = '√';
+const POWER = '^';
+const FACTORIAL = '!';
+const PI = 'π';
+const E = 'e';
+const DEG_RAD = 'deg';
 
 /**
  * Presents the visual surface of the calculator.
@@ -44,6 +55,8 @@ export class CalculiteView extends ItemView {
 	private canvasCtx: CanvasRenderingContext2D | null;
 
 	// Numeric state
+	private isScientific = false;
+	private isDegrees = true;
 	private previousResult: number | null = null;
 	private previousOperator: string | null = null;
 	private previousInput: number | null = null;
@@ -94,6 +107,9 @@ export class CalculiteView extends ItemView {
 	async onOpen(): Promise<void> {
 		this.contentEl.empty();
 		this.contentEl.addClass('calculite');
+		if (this.isScientific) {
+			this.contentEl.addClass('calculite-scientific');
+		}
 
 		// Create UI elements
 		this.createScreens();
@@ -113,6 +129,7 @@ export class CalculiteView extends ItemView {
 	 */
 	getState(): Record<string, unknown> {
 		return {
+			isScientific: this.isScientific,
 			previousResult: this.previousResult,
 			previousOperator: this.previousOperator,
 			previousInput: this.previousInput,
@@ -135,6 +152,7 @@ export class CalculiteView extends ItemView {
 		}
 
 		// Restore numeric state
+		this.isScientific = state.isScientific ?? false;
 		this.previousResult = state.previousResult ?? null;
 		this.previousOperator = state.previousOperator ?? null;
 		this.previousInput = state.previousInput ?? null;
@@ -157,6 +175,16 @@ export class CalculiteView extends ItemView {
 	}
 
 	/**
+	 * Toggle between standard and scientific mode.
+	 */
+	toggleScientificMode(): void {
+		this.isScientific = !this.isScientific;
+		this.contentEl.toggleClass('calculite-scientific', this.isScientific);
+		this.onResize(); // Recalculate font size for new layout
+		this.app.workspace.requestSaveLayout();
+	}
+
+	/**
 	 * Scale font size based on calculator dimensions.
 	 * @override
 	 */
@@ -165,7 +193,7 @@ export class CalculiteView extends ItemView {
 		const dimension = Math.min(this.contentEl.clientHeight, this.contentEl.clientWidth * 1.618);
 
 		// Set a divisor that converts length into a font size
-		const divisor = Platform.isMobile ? 35 : 25;
+		const divisor = Platform.isMobile ? 35 : (this.isScientific ? 28 : 25);
 
 		// Update font size
 		const fontSize = Math.max(8, dimension / divisor);
@@ -278,6 +306,14 @@ export class CalculiteView extends ItemView {
 	 */
 	private createButtons(): void {
 		// Create 1st row
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: 'deg' }, el => {
+			this.registerButtonListeners(el, () => this.pressToggleDegrees(el));
+			this.hotkeyButtonMap.set(DEG_RAD, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: FACTORIAL }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(FACTORIAL));
+			this.hotkeyButtonMap.set(FACTORIAL, el);
+		});
 		this.contentEl.createEl('button', { cls: 'calculite-delete', text: CLEAR }, el => {
 			this.registerButtonListeners(el, () => this.pressClear());
 			this.hotkeyButtonMap.set(CLEAR, el);
@@ -296,6 +332,14 @@ export class CalculiteView extends ItemView {
 		});
 
 		// Create 2nd row
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: SIN }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(SIN));
+			this.hotkeyButtonMap.set(SIN, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: POWER }, el => {
+			this.registerButtonListeners(el, () => this.pressOperator(POWER));
+			this.hotkeyButtonMap.set(POWER, el);
+		});
 		this.contentEl.createEl('button', { cls: 'calculite-numeric', text: DIGIT_7 }, el => {
 			this.registerButtonListeners(el, () => this.pressDigit(7));
 			this.hotkeyButtonMap.set(DIGIT_7, el);
@@ -314,6 +358,14 @@ export class CalculiteView extends ItemView {
 		});
 
 		// Create 3rd row
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: COS }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(COS));
+			this.hotkeyButtonMap.set(COS, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: SQRT }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(SQRT));
+			this.hotkeyButtonMap.set(SQRT, el);
+		});
 		this.contentEl.createEl('button', { cls: 'calculite-numeric', text: DIGIT_4 }, el => {
 			this.registerButtonListeners(el, () => this.pressDigit(4));
 			this.hotkeyButtonMap.set(DIGIT_4, el);
@@ -332,6 +384,14 @@ export class CalculiteView extends ItemView {
 		});
 
 		// Create 4th row
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: TAN }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(TAN));
+			this.hotkeyButtonMap.set(TAN, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: LOG }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(LOG));
+			this.hotkeyButtonMap.set(LOG, el);
+		});
 		this.contentEl.createEl('button', { cls: 'calculite-numeric', text: DIGIT_1 }, el => {
 			this.registerButtonListeners(el, () => this.pressDigit(1));
 			this.hotkeyButtonMap.set(DIGIT_1, el);
@@ -350,6 +410,14 @@ export class CalculiteView extends ItemView {
 		});
 
 		// Create 5th row
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: PI }, el => {
+			this.registerButtonListeners(el, () => this.pressConstant(Math.PI));
+			this.hotkeyButtonMap.set(PI, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: LN }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(LN));
+			this.hotkeyButtonMap.set(LN, el);
+		});
 		this.contentEl.createEl('button', { cls: 'calculite-numeric', text: NEGATE }, el => {
 			this.registerButtonListeners(el, () => this.pressNegate());
 			this.hotkeyButtonMap.set(NEGATE, el);
@@ -539,6 +607,14 @@ export class CalculiteView extends ItemView {
 		this.scope.register([], 'Y', () => {
 			this.pressOperator(DIVIDE);
 			this.flashHotkeyButton(DIVIDE);
+		});
+		this.scope.register([], '^', () => {
+			this.pressOperator(POWER);
+			this.flashHotkeyButton(POWER);
+		});
+		this.scope.register([], '!', () => {
+			this.pressUnary(FACTORIAL);
+			this.flashHotkeyButton(FACTORIAL);
 		});
 		this.scope.register([], 'Enter', () => {
 			this.pressEquals();
@@ -842,6 +918,119 @@ export class CalculiteView extends ItemView {
 	}
 
 	/**
+	 * Append a constant to the main screen.
+	 */
+	private pressConstant(val: number): void {
+		if (this.currentError) {
+			this.pressClear();
+		}
+
+		// If input is empty or we are starting a new number
+		if (!this.currentInput || (this.currentResult !== null && !this.currentOperator)) {
+			this.currentInput = String(val);
+		} else {
+			// Constants replace the current input if it's "0"
+			if (this.currentInput === '0') {
+				this.currentInput = String(val);
+			} else {
+				// Implicit multiplication if appending to a number? 
+				// Standard calculators often treat 3pi as 3*pi, but here we just replace or ignore?
+				// To be safe and simple: replace if 0, otherwise ignore or reset.
+				// Let's reset input.
+				this.currentInput = String(val);
+			}
+		}
+		this.updateScreen(this.currentInput);
+	}
+
+	/**
+	 * Toggle between Degrees and Radians.
+	 */
+	private pressToggleDegrees(buttonEl: HTMLElement): void {
+		this.isDegrees = !this.isDegrees;
+		buttonEl.setText(this.isDegrees ? 'deg' : 'rad');
+	}
+
+	/**
+	 * Execute a unary operation on the current input/result.
+	 */
+	private pressUnary(func: string): void {
+		if (this.currentError) {
+			this.pressClear();
+			return;
+		}
+
+		let value: number;
+		// Use current input if available, else current result
+		if (this.currentInput) {
+			value = Number(this.currentInput);
+		} else if (this.currentResult !== null) {
+			value = this.currentResult;
+		} else {
+			value = 0;
+		}
+
+		let result: number;
+		try {
+			switch (func) {
+				case SIN:
+					result = Math.sin(this.isDegrees ? value * Math.PI / 180 : value);
+					break;
+				case COS:
+					result = Math.cos(this.isDegrees ? value * Math.PI / 180 : value);
+					break;
+				case TAN:
+					result = Math.tan(this.isDegrees ? value * Math.PI / 180 : value);
+					break;
+				case LOG:
+					result = Math.log10(value);
+					break;
+				case LN:
+					result = Math.log(value);
+					break;
+				case SQRT:
+					if (value < 0) throw new Error('Invalid input');
+					result = Math.sqrt(value);
+					break;
+				case FACTORIAL:
+					if (value < 0 || !Number.isInteger(value)) throw new Error('Invalid input');
+					result = this.factorial(value);
+					break;
+				default:
+					return;
+			}
+		} catch (e) {
+			this.currentError = 'Error';
+			this.updateScreen(this.currentError, true);
+			return;
+		}
+
+		// Check for errors (NaN, Infinity)
+		if (!Number.isFinite(result)) {
+			this.currentError = 'Error';
+			this.updateScreen(this.currentError, true);
+			return;
+		}
+
+		// Update state
+		this.currentInput = String(result);
+		// If we were displaying a result, update it
+		if (!this.currentOperator && this.currentResult !== null) {
+			this.currentResult = result;
+		}
+		
+		this.updateScreen(this.currentInput);
+	}
+
+	private factorial(n: number): number {
+		if (n === 0 || n === 1) return 1;
+		if (n > 170) return Infinity; // Overflow for standard float
+		let result = 1;
+		for (let i = 2; i <= n; i++) result *= i;
+		return result;
+	}
+
+	/**
 	 * Calculate an equation and return the result.
 	 * @param a First number.
 	 * @param operator An operator (ADD, SUBTRACT, MULTIPLY, or DIVIDE).
@@ -856,6 +1045,7 @@ export class CalculiteView extends ItemView {
 			case SUBTRACT: return a - b;
 			case MULTIPLY: return a * b;
 			case DIVIDE: return a / b;
+			case POWER: return Math.pow(a, b);
 			default: return 0;
 		}
 	}
