@@ -1,18 +1,33 @@
-import { Platform, Plugin } from 'obsidian';
+import { Platform, Plugin, PluginSettingTab, App, Setting } from 'obsidian';
 import { CalculiteView, VIEW_TYPE } from './CalculiteView';
+
+/**
+ * Plugin settings interface.
+ */
+interface CalculiteSettings {
+	defaultScientificMode: boolean;
+}
+
+const DEFAULT_SETTINGS: CalculiteSettings = {
+	defaultScientificMode: false,
+};
 
 /**
  * Manages the creation of calculator panes.
  */
 export default class CalculitePlugin extends Plugin {
+	settings: CalculiteSettings;
 
 	/**
 	 * Add commands for the user to summon a calculator.
 	 * @override
 	 */
 	async onload(): Promise<void> {
-		// Register the main view
-		this.registerView(VIEW_TYPE, (leaf) => new CalculiteView(leaf));
+		// Load settings
+		await this.loadSettings();
+
+		// Register the main view (pass plugin reference for settings access)
+		this.registerView(VIEW_TYPE, (leaf) => new CalculiteView(leaf, this));
 
 		// RIBBON: Show calculator
 		this.addRibbonIcon('calculator', 'Show calculator', () => this.showCalculator());
@@ -51,6 +66,9 @@ export default class CalculitePlugin extends Plugin {
 				callback: () => this.toggleFloatingCalculator(),
 			});
 		}
+
+		// Register settings tab
+		this.addSettingTab(new CalculiteSettingTab(this.app, this));
 	}
 
 	/**
@@ -173,5 +191,46 @@ export default class CalculitePlugin extends Plugin {
 	 */
 	onUserEnable(): void {
 		this.showCalculator();
+	}
+
+	/**
+	 * Load plugin settings from disk.
+	 */
+	async loadSettings(): Promise<void> {
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+	}
+
+	/**
+	 * Save plugin settings to disk.
+	 */
+	async saveSettings(): Promise<void> {
+		await this.saveData(this.settings);
+	}
+}
+
+/**
+ * Settings tab for Calculite.
+ */
+class CalculiteSettingTab extends PluginSettingTab {
+	plugin: CalculitePlugin;
+
+	constructor(app: App, plugin: CalculitePlugin) {
+		super(app, plugin);
+		this.plugin = plugin;
+	}
+
+	display(): void {
+		const { containerEl } = this;
+		containerEl.empty();
+
+		new Setting(containerEl)
+			.setName('Default to scientific mode')
+			.setDesc('When enabled, the calculator will open in scientific mode by default.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.defaultScientificMode)
+				.onChange(async (value) => {
+					this.plugin.settings.defaultScientificMode = value;
+					await this.plugin.saveSettings();
+				}));
 	}
 }

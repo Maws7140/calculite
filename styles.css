@@ -165,6 +165,19 @@ body:not(.is-mobile) .calculite > button.calculite-function:hover {
 	background-color: color-mix(in srgb, var(--background-secondary), black 15%);
 }
 
+.calculite > button.calculite-shift-active {
+	color: var(--text-on-accent);
+	background-color: var(--interactive-accent);
+}
+
+body:not(.is-mobile) .calculite > button.calculite-shift-active:hover {
+	background-color: var(--interactive-accent-hover);
+}
+
+.calculite > button.calculite-shift-active:hover:active {
+	background-color: color-mix(in srgb, var(--interactive-accent), black 15%);
+}
+
 .calculite-floating .workspace-tab-header-container-inner,
 .calculite-floating .workspace-tab-header-new-tab,
 .calculite-floating .workspace-tab-header-tab-list,

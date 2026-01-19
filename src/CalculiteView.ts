@@ -1,4 +1,5 @@
-import { IconName, ItemView, Menu, Platform, Scope, ViewStateResult, WorkspaceLeaf, setIcon } from 'obsidian';
+import { IconName, ItemView, Menu, Platform, Scope, ViewStateResult, WorkspaceLeaf } from 'obsidian';
+import type CalculitePlugin from './CalculitePlugin';
 
 export const VIEW_TYPE = 'calculite';
 const DISPLAY_TEXT = 'Calculite';
@@ -43,6 +44,45 @@ const FACTORIAL = '!';
 const PI = 'π';
 const E = 'e';
 const DEG_RAD = 'deg';
+const ASIN = 'sin⁻¹';
+const ACOS = 'cos⁻¹';
+const ATAN = 'tan⁻¹';
+const SQUARE = 'x²';
+const PERCENT = '%';
+const RECIPROCAL = '1/x';
+const EXP = 'eˣ';
+const ABS = '|x|';
+
+// Shift (2nd) function constants
+const SHIFT = '2nd';
+const SINH = 'sinh';
+const COSH = 'cosh';
+const TANH = 'tanh';
+const ASINH = 'sinh⁻¹';
+const ACOSH = 'cosh⁻¹';
+const ATANH = 'tanh⁻¹';
+const NTH_ROOT = 'ʸ√x';
+const NPR = 'nPr';
+const NCR = 'nCr';
+
+// Parentheses
+const OPEN_PAREN = '(';
+const CLOSE_PAREN = ')';
+
+// Additional functions for row 8
+const POW10 = '10ˣ';
+const MOD = 'mod';
+const CUBE = 'x³';
+const CBRT = '³√x';
+
+// Type for saved expression state
+interface ExpressionState {
+	previousResult: number | null;
+	previousOperator: string | null;
+	previousInput: number | null;
+	currentResult: number | null;
+	currentOperator: string | null;
+}
 
 /**
  * Presents the visual surface of the calculator.
@@ -57,6 +97,7 @@ export class CalculiteView extends ItemView {
 	// Numeric state
 	private isScientific = false;
 	private isDegrees = true;
+	private isShifted = false;
 	private previousResult: number | null = null;
 	private previousOperator: string | null = null;
 	private previousInput: number | null = null;
@@ -65,6 +106,10 @@ export class CalculiteView extends ItemView {
 	private currentInput: string | null = null;
 	private currentError: string | null = null;
 
+	// Parentheses state
+	private expressionStack: ExpressionState[] = [];
+	private expressionDisplay: string = '';
+
 	// Button state
 	private currentClickTarget: EventTarget | null = null;
 	private currentTouchTimerId: number | undefined;
@@ -72,8 +117,15 @@ export class CalculiteView extends ItemView {
 	private currentHotkeyButtonId: string | null = null;
 	private currentHotkeyTimerId: number | undefined;
 
-	constructor(leaf: WorkspaceLeaf) {
+	// Plugin reference for settings access
+	private plugin: CalculitePlugin;
+
+	// Track if this is a fresh open (no state restored yet)
+	private hasRestoredState = false;
+
+	constructor(leaf: WorkspaceLeaf, plugin: CalculitePlugin) {
 		super(leaf);
+		this.plugin = plugin;
 	}
 
 	/**
@@ -107,6 +159,12 @@ export class CalculiteView extends ItemView {
 	async onOpen(): Promise<void> {
 		this.contentEl.empty();
 		this.contentEl.addClass('calculite');
+
+		// Apply default scientific mode from settings if this is a fresh open
+		if (!this.hasRestoredState) {
+			this.isScientific = this.plugin.settings.defaultScientificMode;
+		}
+
 		if (this.isScientific) {
 			this.contentEl.addClass('calculite-scientific');
 		}
@@ -130,6 +188,7 @@ export class CalculiteView extends ItemView {
 	getState(): Record<string, unknown> {
 		return {
 			isScientific: this.isScientific,
+			isDegrees: this.isDegrees,
 			previousResult: this.previousResult,
 			previousOperator: this.previousOperator,
 			previousInput: this.previousInput,
@@ -137,6 +196,8 @@ export class CalculiteView extends ItemView {
 			currentOperator: this.currentOperator,
 			currentInput: this.currentInput,
 			currentError: this.currentError,
+			expressionStack: this.expressionStack,
+			expressionDisplay: this.expressionDisplay,
 		}
 	}
 
@@ -151,14 +212,32 @@ export class CalculiteView extends ItemView {
 			state = {};
 		}
 
-		// Restore numeric state
-		this.isScientific = state.isScientific ?? false;
+		// Mark that state has been restored (use saved state, not default)
+		this.hasRestoredState = true;
+
+		// Restore numeric state (use default from settings if not in saved state)
+		this.isScientific = state.isScientific ?? this.plugin.settings.defaultScientificMode;
+		this.isDegrees = state.isDegrees ?? true;
 		this.previousResult = state.previousResult ?? null;
 		this.previousOperator = state.previousOperator ?? null;
 		this.previousInput = state.previousInput ?? null;
 		this.currentResult = state.currentResult ?? null;
 		this.currentOperator = state.currentOperator ?? null;
 		this.currentInput = state.currentInput ?? null;
+		this.currentError = state.currentError ?? null;
+
+		// Restore parentheses state
+		this.expressionStack = state.expressionStack ?? [];
+		this.expressionDisplay = state.expressionDisplay ?? '';
+
+		// Restore scientific mode UI
+		this.contentEl.toggleClass('calculite-scientific', this.isScientific);
+
+		// Restore deg/rad button text
+		const degRadButton = this.hotkeyButtonMap.get(DEG_RAD);
+		if (degRadButton) {
+			degRadButton.setText(this.isDegrees ? 'deg' : 'rad');
+		}
 
 		// Restore both screens
 		if (this.currentOperator) {
@@ -169,6 +248,9 @@ export class CalculiteView extends ItemView {
 			this.updateSubscreen([this.previousInput, '=']);
 		}
 		this.updateScreen(this.currentError ?? this.currentInput ?? this.currentResult, this.currentError !== null);
+
+		// Recalculate font size for potentially different layout
+		this.onResize();
 
 		// Forward to superclass
 		return super.setState(state, result);
@@ -182,6 +264,10 @@ export class CalculiteView extends ItemView {
 		this.contentEl.toggleClass('calculite-scientific', this.isScientific);
 		this.onResize(); // Recalculate font size for new layout
 		this.app.workspace.requestSaveLayout();
+
+		// Save mode preference to settings so new calculators open in this mode
+		this.plugin.settings.defaultScientificMode = this.isScientific;
+		this.plugin.saveSettings();
 	}
 
 	/**
@@ -333,7 +419,7 @@ export class CalculiteView extends ItemView {
 
 		// Create 2nd row
 		this.contentEl.createEl('button', { cls: 'calculite-function', text: SIN }, el => {
-			this.registerButtonListeners(el, () => this.pressUnary(SIN));
+			this.registerButtonListeners(el, () => this.pressUnary(this.isShifted ? SINH : SIN));
 			this.hotkeyButtonMap.set(SIN, el);
 		});
 		this.contentEl.createEl('button', { cls: 'calculite-function', text: POWER }, el => {
@@ -359,11 +445,17 @@ export class CalculiteView extends ItemView {
 
 		// Create 3rd row
 		this.contentEl.createEl('button', { cls: 'calculite-function', text: COS }, el => {
-			this.registerButtonListeners(el, () => this.pressUnary(COS));
+			this.registerButtonListeners(el, () => this.pressUnary(this.isShifted ? COSH : COS));
 			this.hotkeyButtonMap.set(COS, el);
 		});
 		this.contentEl.createEl('button', { cls: 'calculite-function', text: SQRT }, el => {
-			this.registerButtonListeners(el, () => this.pressUnary(SQRT));
+			this.registerButtonListeners(el, () => {
+				if (this.isShifted) {
+					this.pressOperator(NTH_ROOT);
+				} else {
+					this.pressUnary(SQRT);
+				}
+			});
 			this.hotkeyButtonMap.set(SQRT, el);
 		});
 		this.contentEl.createEl('button', { cls: 'calculite-numeric', text: DIGIT_4 }, el => {
@@ -385,7 +477,7 @@ export class CalculiteView extends ItemView {
 
 		// Create 4th row
 		this.contentEl.createEl('button', { cls: 'calculite-function', text: TAN }, el => {
-			this.registerButtonListeners(el, () => this.pressUnary(TAN));
+			this.registerButtonListeners(el, () => this.pressUnary(this.isShifted ? TANH : TAN));
 			this.hotkeyButtonMap.set(TAN, el);
 		});
 		this.contentEl.createEl('button', { cls: 'calculite-function', text: LOG }, el => {
@@ -433,6 +525,84 @@ export class CalculiteView extends ItemView {
 		this.contentEl.createEl('button', { cls: 'calculite-operator', text: EQUALS }, el => {
 			this.registerButtonListeners(el, () => this.pressEquals());
 			this.hotkeyButtonMap.set(EQUALS, el);
+		});
+
+		// Create 6th row (additional scientific functions)
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: ASIN }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(this.isShifted ? ASINH : ASIN));
+			this.hotkeyButtonMap.set(ASIN, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: ACOS }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(this.isShifted ? ACOSH : ACOS));
+			this.hotkeyButtonMap.set(ACOS, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: ATAN }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(this.isShifted ? ATANH : ATAN));
+			this.hotkeyButtonMap.set(ATAN, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: E }, el => {
+			this.registerButtonListeners(el, () => this.pressConstant(Math.E));
+			this.hotkeyButtonMap.set(E, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: SQUARE }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(SQUARE));
+			this.hotkeyButtonMap.set(SQUARE, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: PERCENT }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(PERCENT));
+			this.hotkeyButtonMap.set(PERCENT, el);
+		});
+
+		// Create 7th row (more scientific functions)
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: EXP }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(EXP));
+			this.hotkeyButtonMap.set(EXP, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: RECIPROCAL }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(RECIPROCAL));
+			this.hotkeyButtonMap.set(RECIPROCAL, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: ABS }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(ABS));
+			this.hotkeyButtonMap.set(ABS, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function calculite-shift', text: SHIFT }, el => {
+			this.registerButtonListeners(el, () => this.pressShift(el));
+			this.hotkeyButtonMap.set(SHIFT, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: NPR }, el => {
+			this.registerButtonListeners(el, () => this.pressOperator(NPR));
+			this.hotkeyButtonMap.set(NPR, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: NCR }, el => {
+			this.registerButtonListeners(el, () => this.pressOperator(NCR));
+			this.hotkeyButtonMap.set(NCR, el);
+		});
+
+		// Create 8th row (parentheses and additional functions)
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: OPEN_PAREN }, el => {
+			this.registerButtonListeners(el, () => this.pressOpenParen());
+			this.hotkeyButtonMap.set(OPEN_PAREN, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: CLOSE_PAREN }, el => {
+			this.registerButtonListeners(el, () => this.pressCloseParen());
+			this.hotkeyButtonMap.set(CLOSE_PAREN, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: POW10 }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(POW10));
+			this.hotkeyButtonMap.set(POW10, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: MOD }, el => {
+			this.registerButtonListeners(el, () => this.pressOperator(MOD));
+			this.hotkeyButtonMap.set(MOD, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: CUBE }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(CUBE));
+			this.hotkeyButtonMap.set(CUBE, el);
+		});
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: CBRT }, el => {
+			this.registerButtonListeners(el, () => this.pressUnary(CBRT));
+			this.hotkeyButtonMap.set(CBRT, el);
 		});
 	}
 
@@ -634,6 +804,16 @@ export class CalculiteView extends ItemView {
 			this.pressNegate();
 			this.flashHotkeyButton(NEGATE);
 		});
+
+		// Register parentheses hotkeys
+		this.scope.register(['Shift'], '9', () => {
+			this.pressOpenParen();
+			this.flashHotkeyButton(OPEN_PAREN);
+		});
+		this.scope.register(['Shift'], '0', () => {
+			this.pressCloseParen();
+			this.flashHotkeyButton(CLOSE_PAREN);
+		});
 	}
 
 	/**
@@ -675,6 +855,10 @@ export class CalculiteView extends ItemView {
 		this.currentOperator = null;
 		this.currentInput = null;
 		this.currentError = null;
+
+		// Clear parentheses state
+		this.expressionStack = [];
+		this.expressionDisplay = '';
 
 		// Update both screens
 		this.updateSubscreen(null);
@@ -952,6 +1136,160 @@ export class CalculiteView extends ItemView {
 	}
 
 	/**
+	 * Toggle shift (2nd) mode for alternate functions.
+	 */
+	private pressShift(buttonEl: HTMLElement): void {
+		this.isShifted = !this.isShifted;
+		buttonEl.toggleClass('calculite-shift-active', this.isShifted);
+
+		// Update button labels based on shift state
+		const sinBtn = this.hotkeyButtonMap.get(SIN);
+		const cosBtn = this.hotkeyButtonMap.get(COS);
+		const tanBtn = this.hotkeyButtonMap.get(TAN);
+		const sqrtBtn = this.hotkeyButtonMap.get(SQRT);
+		const asinBtn = this.hotkeyButtonMap.get(ASIN);
+		const acosBtn = this.hotkeyButtonMap.get(ACOS);
+		const atanBtn = this.hotkeyButtonMap.get(ATAN);
+
+		if (this.isShifted) {
+			sinBtn?.setText(SINH);
+			cosBtn?.setText(COSH);
+			tanBtn?.setText(TANH);
+			sqrtBtn?.setText(NTH_ROOT);
+			asinBtn?.setText(ASINH);
+			acosBtn?.setText(ACOSH);
+			atanBtn?.setText(ATANH);
+		} else {
+			sinBtn?.setText(SIN);
+			cosBtn?.setText(COS);
+			tanBtn?.setText(TAN);
+			sqrtBtn?.setText(SQRT);
+			asinBtn?.setText(ASIN);
+			acosBtn?.setText(ACOS);
+			atanBtn?.setText(ATAN);
+		}
+	}
+
+	/**
+	 * Handle opening parenthesis - save current state and start fresh sub-expression.
+	 */
+	private pressOpenParen(): void {
+		if (this.currentError) {
+			this.pressClear();
+		}
+
+		// If we have a number with no operator, insert implicit multiplication
+		if (this.currentInput && !this.currentOperator) {
+			this.pressOperator(MULTIPLY);
+		} else if (this.currentResult !== null && !this.currentOperator && !this.currentInput) {
+			// Result from previous calculation - also implicit multiply
+			this.pressOperator(MULTIPLY);
+		}
+
+		// Build expression display: capture current state before opening paren
+		if (this.currentResult !== null) {
+			this.expressionDisplay += this.currentResult;
+		}
+		if (this.currentOperator) {
+			this.expressionDisplay += ' ' + this.currentOperator + ' ';
+		}
+		this.expressionDisplay += OPEN_PAREN;
+
+		// Save current state to stack
+		this.expressionStack.push({
+			previousResult: this.previousResult,
+			previousOperator: this.previousOperator,
+			previousInput: this.previousInput,
+			currentResult: this.currentResult,
+			currentOperator: this.currentOperator,
+		});
+
+		// Reset for new sub-expression
+		this.previousResult = null;
+		this.previousOperator = null;
+		this.previousInput = null;
+		this.currentResult = null;
+		this.currentOperator = null;
+		this.currentInput = null;
+
+		// Update display
+		this.updateSubscreen(null);
+		this.updateScreen(null);
+	}
+
+	/**
+	 * Handle closing parenthesis - evaluate sub-expression and restore parent state.
+	 */
+	private pressCloseParen(): void {
+		// Ignore if no matching open parenthesis
+		if (this.expressionStack.length === 0) {
+			return;
+		}
+
+		if (this.currentError) {
+			return;
+		}
+
+		// Evaluate current sub-expression to get a result
+		let subResult: number;
+		let displayValue: string;
+
+		if (this.currentOperator && this.currentInput) {
+			// Have operator and input: calculate
+			subResult = this.calculate(this.currentResult, this.currentOperator, Number(this.currentInput));
+			displayValue = this.currentResult + ' ' + this.currentOperator + ' ' + this.currentInput;
+		} else if (this.currentOperator && this.currentResult !== null) {
+			// Have operator but no input yet: use current result
+			subResult = this.currentResult;
+			displayValue = String(this.currentResult);
+		} else if (this.currentInput) {
+			// Just a number entered
+			subResult = Number(this.currentInput);
+			displayValue = this.currentInput;
+		} else if (this.currentResult !== null) {
+			// Have a result from operations
+			subResult = this.currentResult;
+			displayValue = String(this.currentResult);
+		} else {
+			// Empty parentheses: treat as 0
+			subResult = 0;
+			displayValue = '0';
+		}
+
+		// Check for errors
+		if (!Number.isFinite(subResult)) {
+			this.currentError = 'Error';
+			this.updateScreen(this.currentError, true);
+			return;
+		}
+
+		// Update expression display - add the content and closing paren
+		this.expressionDisplay += displayValue + CLOSE_PAREN;
+
+		// Pop saved state from stack
+		const savedState = this.expressionStack.pop()!;
+		this.previousResult = savedState.previousResult;
+		this.previousOperator = savedState.previousOperator;
+		this.previousInput = savedState.previousInput;
+		this.currentResult = savedState.currentResult;
+		this.currentOperator = savedState.currentOperator;
+
+		// Insert the sub-expression result as current input
+		this.currentInput = String(subResult);
+
+		// If we're back at the top level (no more parentheses), clear expression display
+		// since the subscreen will show the normal output
+		if (this.expressionStack.length === 0) {
+			this.expressionDisplay = '';
+		}
+
+		// Update display
+		this.updateSubscreen([this.currentResult, this.currentOperator]);
+		this.updateScreen(this.currentInput);
+	}
+
+
+	/**
 	 * Execute a unary operation on the current input/result.
 	 */
 	private pressUnary(func: string): void {
@@ -995,6 +1333,65 @@ export class CalculiteView extends ItemView {
 				case FACTORIAL:
 					if (value < 0 || !Number.isInteger(value)) throw new Error('Invalid input');
 					result = this.factorial(value);
+					break;
+				case ASIN:
+					if (value < -1 || value > 1) throw new Error('Invalid input');
+					result = Math.asin(value);
+					if (this.isDegrees) result = result * 180 / Math.PI;
+					break;
+				case ACOS:
+					if (value < -1 || value > 1) throw new Error('Invalid input');
+					result = Math.acos(value);
+					if (this.isDegrees) result = result * 180 / Math.PI;
+					break;
+				case ATAN:
+					result = Math.atan(value);
+					if (this.isDegrees) result = result * 180 / Math.PI;
+					break;
+				case SQUARE:
+					result = value * value;
+					break;
+				case PERCENT:
+					result = value / 100;
+					break;
+				case EXP:
+					result = Math.exp(value);
+					break;
+				case RECIPROCAL:
+					if (value === 0) throw new Error('Invalid input');
+					result = 1 / value;
+					break;
+				case ABS:
+					result = Math.abs(value);
+					break;
+				case SINH:
+					result = Math.sinh(value);
+					break;
+				case COSH:
+					result = Math.cosh(value);
+					break;
+				case TANH:
+					result = Math.tanh(value);
+					break;
+				case ASINH:
+					result = Math.asinh(value);
+					break;
+				case ACOSH:
+					if (value < 1) throw new Error('Invalid input');
+					result = Math.acosh(value);
+					break;
+				case ATANH:
+					if (value <= -1 || value >= 1) throw new Error('Invalid input');
+					result = Math.atanh(value);
+					break;
+				case POW10:
+					result = Math.pow(10, value);
+					break;
+				case CUBE:
+					result = value * value * value;
+					break;
+				case CBRT:
+					result = Math.cbrt(value);
 					break;
 				default:
 					return;
@@ -1046,8 +1443,44 @@ export class CalculiteView extends ItemView {
 			case MULTIPLY: return a * b;
 			case DIVIDE: return a / b;
 			case POWER: return Math.pow(a, b);
+			case NTH_ROOT: return Math.pow(a, 1 / b); // a^(1/b) = b-th root of a
+			case NPR: return this.permutation(a, b);
+			case NCR: return this.combination(a, b);
+			case MOD: return a % b;
 			default: return 0;
 		}
+	}
+
+	/**
+	 * Calculate permutation nPr = n! / (n-r)!
+	 */
+	private permutation(n: number, r: number): number {
+		if (n < 0 || r < 0 || !Number.isInteger(n) || !Number.isInteger(r) || r > n) {
+			return NaN;
+		}
+		let result = 1;
+		for (let i = n - r + 1; i <= n; i++) {
+			result *= i;
+		}
+		return result;
+	}
+
+	/**
+	 * Calculate combination nCr = n! / (r! * (n-r)!)
+	 */
+	private combination(n: number, r: number): number {
+		if (n < 0 || r < 0 || !Number.isInteger(n) || !Number.isInteger(r) || r > n) {
+			return NaN;
+		}
+		// Use the smaller of r and (n-r) for efficiency
+		if (r > n - r) {
+			r = n - r;
+		}
+		let result = 1;
+		for (let i = 0; i < r; i++) {
+			result = result * (n - i) / (i + 1);
+		}
+		return result;
 	}
 
 	/**
@@ -1115,20 +1548,25 @@ export class CalculiteView extends ItemView {
 	 */
 	private updateSubscreen(outputs: (number | string | null)[] | null): void {
 		let output: string;
+
+		// If we're inside parentheses, prepend the expression context
+		const prefix = this.expressionDisplay;
+
 		if (outputs === null) {
-			output = '0'; // Preserve subscreen height while blank
+			output = prefix || '0'; // Preserve subscreen height while blank
 		} else {
 			// Replace ASCII symbols with typographic symbols
-			output = outputs.join(' ')
+			const suffix = outputs.join(' ')
 				.replace(/\./g, DECIMAL_SYMBOL)
 				.replace(/-/g, '−')
 				.replace('*', '×')
-				.replace('/', '÷')
+				.replace('/', '÷');
+			output = prefix + suffix;
 		}
 
 		// Output to subscreen
 		this.subscreenEl.setText(output);
-		this.subscreenEl.toggleClass('calculite-invisible', outputs === null);
+		this.subscreenEl.toggleClass('calculite-invisible', outputs === null && !prefix);
 
 		// Ask workspace to preserve view state
 		this.app.workspace.requestSaveLayout();
