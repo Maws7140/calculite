@@ -1443,7 +1443,7 @@ export class CalculiteView extends ItemView {
 			case MULTIPLY: return a * b;
 			case DIVIDE: return a / b;
 			case POWER: return Math.pow(a, b);
-			case NTH_ROOT: return Math.pow(a, 1 / b); // a^(1/b) = b-th root of a
+			case NTH_ROOT: return Math.pow(b, 1 / a); // b^(1/a) = a-th root of b
 			case NPR: return this.permutation(a, b);
 			case NCR: return this.combination(a, b);
 			case MOD: return a % b;
