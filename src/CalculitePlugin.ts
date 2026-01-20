@@ -93,7 +93,7 @@ export default class CalculitePlugin extends Plugin {
 	/**
 	 * Toggle between standard and scientific mode for the active calculator.
 	 */
-	private toggleScientificMode(): void {
+	private async toggleScientificMode(): Promise<void> {
 		// Check for an existing calculator
 		let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE).first() ?? null;
 
@@ -103,7 +103,7 @@ export default class CalculitePlugin extends Plugin {
 		}
 
 		if (leaf && leaf.view instanceof CalculiteView) {
-			leaf.view.toggleScientificMode();
+			await leaf.view.toggleScientificMode();
 			this.app.workspace.revealLeaf(leaf);
 		}
 	}

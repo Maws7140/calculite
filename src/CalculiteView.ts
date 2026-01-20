@@ -82,6 +82,7 @@ interface ExpressionState {
 	previousInput: number | null;
 	currentResult: number | null;
 	currentOperator: string | null;
+	expressionDisplayLength: number; // Track where this parenthesis was opened in expressionDisplay
 }
 
 /**
@@ -233,11 +234,8 @@ export class CalculiteView extends ItemView {
 		// Restore scientific mode UI
 		this.contentEl.toggleClass('calculite-scientific', this.isScientific);
 
-		// Restore deg/rad button text
-		const degRadButton = this.hotkeyButtonMap.get(DEG_RAD);
-		if (degRadButton) {
-			degRadButton.setText(this.isDegrees ? 'deg' : 'rad');
-		}
+		// Note: deg/rad button text will be restored in onOpen() after buttons are created
+		// (setState() is called before onOpen(), so buttons don't exist yet)
 
 		// Restore both screens
 		if (this.currentOperator) {
@@ -259,7 +257,7 @@ export class CalculiteView extends ItemView {
 	/**
 	 * Toggle between standard and scientific mode.
 	 */
-	toggleScientificMode(): void {
+	async toggleScientificMode(): Promise<void> {
 		this.isScientific = !this.isScientific;
 		this.contentEl.toggleClass('calculite-scientific', this.isScientific);
 		this.onResize(); // Recalculate font size for new layout
@@ -267,7 +265,7 @@ export class CalculiteView extends ItemView {
 
 		// Save mode preference to settings so new calculators open in this mode
 		this.plugin.settings.defaultScientificMode = this.isScientific;
-		this.plugin.saveSettings();
+		await this.plugin.saveSettings();
 	}
 
 	/**
@@ -392,7 +390,7 @@ export class CalculiteView extends ItemView {
 	 */
 	private createButtons(): void {
 		// Create 1st row
-		this.contentEl.createEl('button', { cls: 'calculite-function', text: 'deg' }, el => {
+		this.contentEl.createEl('button', { cls: 'calculite-function', text: this.isDegrees ? 'deg' : 'rad' }, el => {
 			this.registerButtonListeners(el, () => this.pressToggleDegrees(el));
 			this.hotkeyButtonMap.set(DEG_RAD, el);
 		});
@@ -860,6 +858,30 @@ export class CalculiteView extends ItemView {
 		this.expressionStack = [];
 		this.expressionDisplay = '';
 
+		// Reset shift mode if active
+		if (this.isShifted) {
+			this.isShifted = false;
+			const shiftBtn = this.hotkeyButtonMap.get(SHIFT);
+			shiftBtn?.removeClass('calculite-shift-active');
+
+			// Update button labels back to non-shifted state
+			const sinBtn = this.hotkeyButtonMap.get(SIN);
+			const cosBtn = this.hotkeyButtonMap.get(COS);
+			const tanBtn = this.hotkeyButtonMap.get(TAN);
+			const sqrtBtn = this.hotkeyButtonMap.get(SQRT);
+			const asinBtn = this.hotkeyButtonMap.get(ASIN);
+			const acosBtn = this.hotkeyButtonMap.get(ACOS);
+			const atanBtn = this.hotkeyButtonMap.get(ATAN);
+
+			sinBtn?.setText(SIN);
+			cosBtn?.setText(COS);
+			tanBtn?.setText(TAN);
+			sqrtBtn?.setText(SQRT);
+			asinBtn?.setText(ASIN);
+			acosBtn?.setText(ACOS);
+			atanBtn?.setText(ATAN);
+		}
+
 		// Update both screens
 		this.updateSubscreen(null);
 		this.updateScreen(this.currentInput);
@@ -1028,7 +1050,7 @@ export class CalculiteView extends ItemView {
 		if (this.currentOperator) this.previousOperator = this.currentOperator;
 
 		// Check for arithmetic errors
-		if (this.isDividingByZero() || this.isTooSmall() || this.isTooLarge()) {
+		if (this.isDividingByZero() || this.isInvalidResult() || this.isTooSmall() || this.isTooLarge()) {
 			return;
 		}
 
@@ -1076,7 +1098,7 @@ export class CalculiteView extends ItemView {
 		}
 
 		// Check for arithmetic errors
-		if (this.isDividingByZero() || this.isTooSmall() || this.isTooLarge()) {
+		if (this.isDividingByZero() || this.isInvalidResult() || this.isTooSmall() || this.isTooLarge()) {
 			return false;
 		}
 
@@ -1193,6 +1215,8 @@ export class CalculiteView extends ItemView {
 		if (this.currentOperator) {
 			this.expressionDisplay += ' ' + this.currentOperator + ' ';
 		}
+		// Track where this parenthesis starts in expressionDisplay
+		const expressionDisplayLength = this.expressionDisplay.length;
 		this.expressionDisplay += OPEN_PAREN;
 
 		// Save current state to stack
@@ -1202,6 +1226,7 @@ export class CalculiteView extends ItemView {
 			previousInput: this.previousInput,
 			currentResult: this.currentResult,
 			currentOperator: this.currentOperator,
+			expressionDisplayLength: expressionDisplayLength,
 		});
 
 		// Reset for new sub-expression
@@ -1263,11 +1288,15 @@ export class CalculiteView extends ItemView {
 			return;
 		}
 
-		// Update expression display - add the content and closing paren
-		this.expressionDisplay += displayValue + CLOSE_PAREN;
-
-		// Pop saved state from stack
+		// Pop saved state from stack BEFORE updating expression display
 		const savedState = this.expressionStack.pop()!;
+		
+		// Replace everything after the opening parenthesis with the result
+		// This removes the inner expression and replaces it with the calculated result
+		this.expressionDisplay = this.expressionDisplay.substring(0, savedState.expressionDisplayLength) + 
+			OPEN_PAREN + String(subResult) + CLOSE_PAREN;
+
+		// Restore parent state
 		this.previousResult = savedState.previousResult;
 		this.previousOperator = savedState.previousOperator;
 		this.previousInput = savedState.previousInput;
@@ -1281,10 +1310,15 @@ export class CalculiteView extends ItemView {
 		// since the subscreen will show the normal output
 		if (this.expressionStack.length === 0) {
 			this.expressionDisplay = '';
+			// At top level, show normal subscreen format
+			this.updateSubscreen([this.currentResult, this.currentOperator]);
+		} else {
+			// Still inside nested parentheses - show the expressionDisplay
+			// The restored operator was already added to expressionDisplay when we
+			// opened the parenthesis, so we don't need to add it again
+			this.updateSubscreen(null);
 		}
 
-		// Update display
-		this.updateSubscreen([this.currentResult, this.currentOperator]);
 		this.updateScreen(this.currentInput);
 	}
 
@@ -1411,8 +1445,8 @@ export class CalculiteView extends ItemView {
 
 		// Update state
 		this.currentInput = String(result);
-		// If we were displaying a result, update it
-		if (!this.currentOperator && this.currentResult !== null) {
+		// Always update currentResult when no operator is active, so it's available for subsequent operations
+		if (!this.currentOperator) {
 			this.currentResult = result;
 		}
 		
@@ -1485,9 +1519,11 @@ export class CalculiteView extends ItemView {
 
 	/**
 	 * Check whether current equation divides by zero, and display an error if so.
+	 * Also checks for MOD by zero and NTH_ROOT with zero index.
 	 * @return True if an error was triggered.
 	 */
 	private isDividingByZero(): boolean {
+		// Check DIVIDE by zero
 		if (this.currentOperator === DIVIDE && this.currentInput && Number(this.currentInput) === 0) {
 			const subscreen = [this.previousResult, this.previousOperator, this.previousInput, '='];
 			this.pressClear();
@@ -1495,9 +1531,36 @@ export class CalculiteView extends ItemView {
 			this.currentError = 'Cannot divide by zero';
 			this.updateScreen(this.currentError, true);
 			return true;
-		} else {
-			return false;
 		}
+		// Check MOD by zero
+		if (this.currentOperator === MOD && this.currentInput && Number(this.currentInput) === 0) {
+			const subscreen = [this.previousResult, this.previousOperator, this.previousInput, '='];
+			this.pressClear();
+			this.updateSubscreen(subscreen);
+			this.currentError = 'Cannot divide by zero';
+			this.updateScreen(this.currentError, true);
+			return true;
+		}
+		// Check NTH_ROOT with zero index (a is the index, b is the base)
+		// After calculation in pressOperator/pressEquals: previousInput is the index (a), previousResult is the base (b)
+		if (this.previousOperator === NTH_ROOT && this.previousInput !== null && this.previousInput === 0) {
+			const subscreen = [this.previousResult, this.previousOperator, this.previousInput, '='];
+			this.pressClear();
+			this.updateSubscreen(subscreen);
+			this.currentError = 'Cannot divide by zero';
+			this.updateScreen(this.currentError, true);
+			return true;
+		}
+		// Check NTH_ROOT with zero index BEFORE calculation (when currentOperator is NTH_ROOT and currentInput is 0)
+		if (this.currentOperator === NTH_ROOT && this.currentInput && Number(this.currentInput) === 0) {
+			const subscreen = [this.previousResult, this.currentOperator, this.currentInput, '='];
+			this.pressClear();
+			this.updateSubscreen(subscreen);
+			this.currentError = 'Cannot divide by zero';
+			this.updateScreen(this.currentError, true);
+			return true;
+		}
+		return false;
 	}
 
 	/**
@@ -1526,11 +1589,35 @@ export class CalculiteView extends ItemView {
 	}
 
 	/**
+	 * Check whether current result is invalid (NaN or Infinity), and display an error if so.
+	 * @return True if an error was triggered.
+	 */
+	private isInvalidResult(): boolean {
+		if (this.currentResult !== null && !Number.isFinite(this.currentResult)) {
+			// Capture the invalid result before clearing state so we can
+			// distinguish between NaN and Infinity in the error message.
+			const invalidResult = this.currentResult;
+
+			const subscreen = [this.previousResult, this.previousOperator, this.previousInput, '='];
+			this.pressClear();
+			this.updateSubscreen(subscreen);
+			if (Number.isNaN(invalidResult)) {
+				this.currentError = 'Invalid operation';
+			} else {
+				this.currentError = 'Number too large';
+			}
+			this.updateScreen(this.currentError, true);
+			return true;
+		}
+		return false;
+	}
+
+	/**
 	 * Check whether current equation overflows a 64-bit float, and display an error if so.
 	 * @return True if an error was triggered.
 	 */
 	private isTooLarge(): boolean {
-		if (this.currentResult !== null && Math.abs(this.currentResult) > Number.MAX_VALUE) {
+		if (this.currentResult !== null && Number.isFinite(this.currentResult) && Math.abs(this.currentResult) > Number.MAX_VALUE) {
 			const subscreen = [this.previousResult, this.previousOperator, this.previousInput, '='];
 			this.pressClear();
 			this.updateSubscreen(subscreen);
