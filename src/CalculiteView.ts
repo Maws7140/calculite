@@ -919,8 +919,8 @@ export class CalculiteView extends ItemView {
 	private pressDigit(digit: 0|1|2|3|4|5|6|7|8|9): boolean {
 		// If input is empty:
 		if (!this.currentInput) {
-			// If no operator is active:
-			if (!this.currentOperator) {
+			// If no operator is active and not inside parentheses, clear previous result
+			if (!this.currentOperator && this.expressionStack.length === 0) {
 				this.pressClear();
 			}
 			this.currentInput = String(digit);
@@ -949,8 +949,8 @@ export class CalculiteView extends ItemView {
 	private pressDecimal(): void {
 		// If input is empty:
 		if (!this.currentInput) {
-			// If no operator is active:
-			if (!this.currentOperator) {
+			// If no operator is active and not inside parentheses, clear previous result
+			if (!this.currentOperator && this.expressionStack.length === 0) {
 				this.pressClear();
 			}
 			this.currentInput = '0.';
